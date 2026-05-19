@@ -198,3 +198,182 @@ plt.ylabel("Speedup")
 plt.grid(True)
 
 plt.show()
+
+
+%%writefile merge_sort.cpp
+// Parallel Merge Sort using OpenMP
+// Compile: g++ -fopenmp merge_sort.cpp -o merge_sort
+// Run: ./merge_sort
+
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <cstdlib>
+#include <ctime>
+#include <omp.h>
+
+using namespace std;
+
+// ================= MERGE FUNCTION =================
+
+void merge(vector<int> &arr, int l, int m, int r) {
+
+    vector<int> L(arr.begin() + l, arr.begin() + m + 1);
+    vector<int> R(arr.begin() + m + 1, arr.begin() + r + 1);
+
+    int i = 0;
+    int j = 0;
+    int k = l;
+
+    while (i < L.size() && j < R.size()) {
+
+        if (L[i] <= R[j]) {
+            arr[k++] = L[i++];
+        }
+        else {
+            arr[k++] = R[j++];
+        }
+    }
+
+    while (i < L.size()) {
+        arr[k++] = L[i++];
+    }
+
+    while (j < R.size()) {
+        arr[k++] = R[j++];
+    }
+}
+
+// ================= SEQUENTIAL MERGE SORT =================
+
+void sequentialMergeSort(vector<int> &arr, int l, int r) {
+
+    if (l >= r)
+        return;
+
+    int m = (l + r) / 2;
+
+    sequentialMergeSort(arr, l, m);
+
+    sequentialMergeSort(arr, m + 1, r);
+
+    merge(arr, l, m, r);
+}
+
+// ================= PARALLEL MERGE SORT =================
+
+void parallelMergeSort(vector<int> &arr,
+                       int l,
+                       int r,
+                       int depth) {
+
+    if (l >= r)
+        return;
+
+    int m = (l + r) / 2;
+
+    if (depth > 0) {
+
+        #pragma omp task
+        parallelMergeSort(arr, l, m, depth - 1);
+
+        #pragma omp task
+        parallelMergeSort(arr, m + 1, r, depth - 1);
+
+        #pragma omp taskwait
+
+    } else {
+
+        sequentialMergeSort(arr, l, m);
+
+        sequentialMergeSort(arr, m + 1, r);
+    }
+
+    merge(arr, l, m, r);
+}
+
+// ================= MAIN =================
+
+int main() {
+
+    omp_set_num_threads(4);
+
+    vector<int> sizes = {1000, 5000, 10000, 20000};
+
+    int threads = omp_get_max_threads();
+
+    ofstream csv("merge_sort.csv");
+
+    csv << "size,seq_merge,par_merge,speedup,efficiency\n";
+
+    cout << "\n===== OpenMP Parallel Merge Sort =====\n";
+
+    cout << "Threads = " << threads << "\n\n";
+
+    cout << "Size\tSeq_Time\tPar_Time\tSpeedup\t\tEfficiency\n";
+
+    srand(time(NULL));
+
+    for (int sz : sizes) {
+
+        // Generate random array
+        vector<int> base(sz);
+
+        for (int &x : base) {
+            x = rand() % 100000;
+        }
+
+        double seqTime;
+        double parTime;
+
+        // Sequential Merge Sort
+        vector<int> seq_arr = base;
+
+        double start = omp_get_wtime();
+
+        sequentialMergeSort(seq_arr, 0, sz - 1);
+
+        seqTime = omp_get_wtime() - start;
+
+        // Parallel Merge Sort
+        vector<int> par_arr = base;
+
+        start = omp_get_wtime();
+
+        #pragma omp parallel
+        {
+            #pragma omp single
+            {
+                parallelMergeSort(par_arr, 0, sz - 1, 4);
+            }
+        }
+
+        parTime = omp_get_wtime() - start;
+
+        // Performance Metrics
+        double speedup = seqTime / parTime;
+
+        double efficiency = speedup / threads;
+
+        // Console Output
+        cout << sz << "\t"
+             << seqTime << "\t"
+             << parTime << "\t"
+             << speedup << "\t\t"
+             << efficiency
+             << endl;
+
+        // CSV Output
+        csv << sz << ","
+            << seqTime << ","
+            << parTime << ","
+            << speedup << ","
+            << efficiency << "\n";
+    }
+
+    csv.close();
+
+    cout << "\nResults saved to merge_sort.csv\n";
+
+    return 0;
+}
