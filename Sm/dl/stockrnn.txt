@@ -1,0 +1,120 @@
+# Google Stock Price Prediction using SimpleRNN
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import r2_score
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import SimpleRNN, Dense
+
+# Step 1: Load Dataset
+df = pd.read_csv("googl_data_2020_2025.csv", thousands=',')
+
+# Use Open price column
+data = pd.to_numeric(df['Open'], errors='coerce').dropna().values.reshape(-1, 1)
+
+# Step 2: Normalize Data
+scaler = MinMaxScaler(feature_range=(0, 1))
+data_scaled = scaler.fit_transform(data)
+
+# Step 3: Sequential Train-Test Split
+train_size = int(len(data_scaled) * 0.8)
+
+train_data = data_scaled[:train_size]
+test_data = data_scaled[train_size:]
+
+# Step 4: Create Time-Series Sequences
+def create_dataset(dataset, lookback=10):
+    X, y = [], []
+
+    for i in range(lookback, len(dataset)):
+        X.append(dataset[i-lookback:i, 0])
+        y.append(dataset[i, 0])
+
+    return np.array(X), np.array(y)
+
+lookback = 10
+
+X_train, y_train = create_dataset(train_data, lookback)
+X_test, y_test = create_dataset(test_data, lookback)
+
+# Step 5: Reshape Data for RNN
+X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+
+# Step 6: Build SimpleRNN Model
+model = Sequential([
+    SimpleRNN(64, activation='tanh', input_shape=(lookback, 1)),
+    Dense(32, activation='relu'),
+    Dense(1)
+])
+
+model.compile(
+    optimizer='adam',
+    loss='mse'
+)
+
+model.summary()
+
+# Step 7: Train Model
+history = model.fit(
+    X_train,
+    y_train,
+    epochs=20,
+    batch_size=32,
+    validation_data=(X_test, y_test),
+    verbose=1
+)
+
+# Step 8: Predict on Test Data
+predicted = model.predict(X_test)
+
+predicted_prices = scaler.inverse_transform(predicted)
+real_prices = scaler.inverse_transform(y_test.reshape(-1, 1))
+
+# Step 9: Evaluation
+r2 = r2_score(real_prices, predicted_prices)
+
+test_loss = model.evaluate(X_test, y_test, verbose=0)
+
+print("=" * 40)
+print("FINAL PERFORMANCE METRICS")
+print("=" * 40)
+print("Test Loss (MSE):", round(test_loss, 6))
+print("R2 Score:", round(r2, 4))
+print("=" * 40)
+
+# Step 10: Predict Next Day Price
+last_10_days = data_scaled[-lookback:]
+last_10_days = last_10_days.reshape(1, lookback, 1)
+
+next_day_scaled = model.predict(last_10_days)
+next_day_price = scaler.inverse_transform(next_day_scaled)
+
+print("Predicted Next Day Price:", round(next_day_price[0][0], 2))
+print("=" * 40)
+
+# Step 11: Plot Real vs Predicted Prices
+plt.figure(figsize=(10, 5))
+plt.plot(real_prices, color='red', label='Real Price')
+plt.plot(predicted_prices, color='blue', label='Predicted Price')
+
+plt.title("Google Stock Price Prediction using SimpleRNN")
+plt.xlabel("Days")
+plt.ylabel("Stock Price")
+plt.legend()
+plt.show()
+
+# Step 12: Plot Training and Validation Loss
+plt.figure(figsize=(8, 5))
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+
+plt.title("RNN Training Loss")
+plt.xlabel("Epochs")
+plt.ylabel("MSE Loss")
+plt.legend()
+plt.show()

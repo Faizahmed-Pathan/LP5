@@ -1,0 +1,181 @@
+// Assignment 2: Parallel Bubble Sort using OpenMP
+// Compile: g++ -fopenmp 2_bubble_sort.cpp -o 2_bubble_sort
+// Run: ./2_bubble_sort
+
+#include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <cstring>
+#include <omp.h>
+
+using namespace std;
+
+// Sequential Bubble Sort
+void sequentialBubbleSort(int *a, int n) {
+
+    for (int i = 0; i < n - 1; i++) {
+
+        for (int j = 0; j < n - 1 - i; j++) {
+
+            if (a[j] > a[j + 1]) {
+
+                int temp = a[j];
+                a[j] = a[j + 1];
+                a[j + 1] = temp;
+            }
+        }
+    }
+}
+
+// Parallel Odd-Even Bubble Sort
+void parallelBubbleSort(int *a, int n) {
+
+    #pragma omp parallel shared(a)
+    {
+        for (int phase = 0; phase < n; phase++) {
+
+            #pragma omp for
+            for (int j = phase % 2; j < n - 1; j += 2) {
+
+                if (a[j] > a[j + 1]) {
+
+                    int temp = a[j];
+                    a[j] = a[j + 1];
+                    a[j + 1] = temp;
+                }
+            }
+        }
+    }
+}
+
+int main() {
+
+    int sizes[] = {1000, 5000, 10000, 30000, 50000};
+    int n = 5;
+
+    int threads = omp_get_max_threads();
+
+    cout << "Threads: " << threads << endl;
+    cout << "Size\tSequential\tParallel\tSpeedup\t\tEfficiency" << endl;
+
+    ofstream csv("bubble_sort.csv");
+    csv << "size,seq_bubble,par_bubble,speedup,efficiency\n";
+
+    for (int t = 0; t < n; t++) {
+
+        int sz = sizes[t];
+
+        int *base = new int[sz];
+
+        srand(42 + t);
+
+        for (int i = 0; i < sz; i++) {
+            base[i] = rand() % 100000;
+        }
+
+        int *a1 = new int[sz];
+        int *a2 = new int[sz];
+
+        memcpy(a1, base, sz * sizeof(int));
+        memcpy(a2, base, sz * sizeof(int));
+
+        double start;
+
+        // Sequential Bubble Sort
+        start = omp_get_wtime();
+
+        sequentialBubbleSort(a1, sz);
+
+        double seqTime = omp_get_wtime() - start;
+
+        // Parallel Bubble Sort
+        start = omp_get_wtime();
+
+        parallelBubbleSort(a2, sz);
+
+        double parTime = omp_get_wtime() - start;
+
+        double speedup = seqTime / parTime;
+        double efficiency = speedup / threads;
+
+        cout << sz << "\t"
+             << seqTime << "\t"
+             << parTime << "\t"
+             << speedup << "\t"
+             << efficiency << endl;
+
+        csv << sz << ","
+            << seqTime << ","
+            << parTime << ","
+            << speedup << ","
+            << efficiency << "\n";
+
+        delete[] base;
+        delete[] a1;
+        delete[] a2;
+    }
+
+    csv.close();
+
+    cout << "\nSaved to bubble_sort.csv" << endl;
+
+    return 0;
+}
+
+import pandas as pd
+import matplotlib.pyplot as plt
+df = pd.read_csv("bubble_sort.csv")
+print(df)
+
+plt.figure(figsize=(8,5))
+plt.plot(
+    df['size'],
+    df['seq_bubble'],
+    'o-',
+    label='Sequential Bubble Sort'
+)
+plt.plot(
+    df['size'],
+    df['par_bubble'],
+    's--',
+    label='Parallel Bubble Sort'
+)
+plt.title("Bubble Sort: Sequential vs Parallel Time")
+plt.xlabel("Input Size")
+plt.ylabel("Time (seconds)")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+plt.figure(figsize=(8,5))
+plt.plot(
+    df['size'],
+    df['speedup'],
+    'o-',
+    label='Speedup'
+)
+plt.axhline(
+    y=1,
+    linestyle='--',
+    label='Speedup = 1'
+)
+plt.title("Bubble Sort Speedup")
+plt.xlabel("Input Size")
+plt.ylabel("Speedup")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+plt.figure(figsize=(8,5))   
+plt.plot(
+    df['size'],
+    df['efficiency'],
+    'o-',
+    label='Efficiency'
+)
+plt.title("Bubble Sort Efficiency")
+plt.xlabel("Input Size")
+plt.ylabel("Efficiency")
+plt.legend()
+plt.grid(True)
+plt.show()

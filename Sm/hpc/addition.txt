@@ -1,0 +1,205 @@
+// Assignment 4: Vector Addition using CUDA
+// Compile: nvcc vector_add.cu -o vector_add
+// Run:     ./vector_add
+
+#include <iostream>
+#include <fstream>
+#include <cstdlib>
+#include <ctime>
+#include <cuda_runtime.h>
+
+using namespace std;
+
+// CUDA Kernel Function
+__global__ void vecAdd(float *a, float *b, float *c, int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(i < n)
+        c[i] = a[i] + b[i];
+}
+
+// Sequential CPU Vector Addition
+void cpuVecAdd(float *a, float *b, float *c, int n)
+{
+    for(int i = 0; i < n; i++)
+        c[i] = a[i] + b[i];
+}
+
+int main()
+{
+    cout << "Vector Addition using CUDA" << endl << endl;
+
+    // Different input sizes
+    int sizes[] = {1000, 100000, 1000000, 5000000, 10000000};
+
+    // CSV file for graph plotting
+    ofstream csv("vector_add.csv");
+
+    csv << "size,seq_time,par_time,speedup,efficiency\n";
+
+    int smCount;
+
+    cudaDeviceGetAttribute(
+        &smCount,
+        cudaDevAttrMultiProcessorCount,
+        0
+    );
+
+    cout << "Size\t\tSeq Time\tPar Time\tSpeedup\t\tEfficiency" << endl;
+
+    for(int t = 0; t < 5; t++)
+    {
+        int n = sizes[t];
+
+        // Host arrays
+        float *h_a = new float[n];
+        float *h_b = new float[n];
+        float *h_c = new float[n];
+
+        // Initialize vectors
+        for(int i = 0; i < n; i++)
+        {
+            h_a[i] = rand() % 100;
+            h_b[i] = rand() % 100;
+        }
+
+        // ---------------- Sequential Execution ----------------
+
+        double start =
+            (double)clock() / CLOCKS_PER_SEC;
+
+        cpuVecAdd(h_a, h_b, h_c, n);
+
+        double seqTime =
+            (double)clock() / CLOCKS_PER_SEC - start;
+
+        // ---------------- GPU Execution ----------------
+
+        float *d_a, *d_b, *d_c;
+
+        cudaMalloc(&d_a, n * sizeof(float));
+        cudaMalloc(&d_b, n * sizeof(float));
+        cudaMalloc(&d_c, n * sizeof(float));
+
+        cudaMemcpy(
+            d_a,
+            h_a,
+            n * sizeof(float),
+            cudaMemcpyHostToDevice
+        );
+
+        cudaMemcpy(
+            d_b,
+            h_b,
+            n * sizeof(float),
+            cudaMemcpyHostToDevice
+        );
+
+        // CUDA Events for timing
+        cudaEvent_t e1, e2;
+
+        cudaEventCreate(&e1);
+        cudaEventCreate(&e2);
+
+        int threads = 256;
+        int blocks = (n + threads - 1) / threads;
+
+        cudaEventRecord(e1);
+
+        vecAdd<<<blocks, threads>>>(d_a, d_b, d_c, n);
+
+        cudaEventRecord(e2);
+
+        cudaEventSynchronize(e2);
+
+        float ms;
+
+        cudaEventElapsedTime(&ms, e1, e2);
+
+        double parTime = ms / 1000.0;
+
+        // ---------------- Performance Metrics ----------------
+
+        double speedup = seqTime / parTime;
+
+        double efficiency = speedup / smCount;
+
+        // ---------------- Output ----------------
+
+        cout << n << "\t\t"
+             << seqTime << "\t"
+             << parTime << "\t"
+             << speedup << "\t\t"
+             << efficiency << endl;
+
+        csv << n << ","
+            << seqTime << ","
+            << parTime << ","
+            << speedup << ","
+            << efficiency << "\n";
+
+        // ---------------- Cleanup ----------------
+
+        cudaFree(d_a);
+        cudaFree(d_b);
+        cudaFree(d_c);
+
+        cudaEventDestroy(e1);
+        cudaEventDestroy(e2);
+
+        delete[] h_a;
+        delete[] h_b;
+        delete[] h_c;
+    }
+
+    csv.close();
+
+    cout << "\nSaved to vector_add.csv" << endl;
+
+    return 0;
+}
+
+import pandas as pd
+import matplotlib.pyplot as plt
+# Load data (ensure `vector_add.csv` is in the same folder as this notebook)
+df = pd.read_csv('vector_add.csv')
+print(df.to_string(index=False))
+
+# Chain Graph: Sequential vs Parallel time across input sizes
+fig, ax = plt.subplots(figsize=(10, 5))
+fig.suptitle('Vector Addition: Sequential vs Parallel Time', fontsize=14)
+ax.plot(df['size'], df['seq_time'], 'o-', label='CPU Sequential', color='blue')
+ax.plot(df['size'], df['par_time'], 's--', label='GPU Parallel', color='red')
+ax.set_xscale('log')
+ax.set_title('Chain Graph')
+ax.set_xlabel('Input Size')
+ax.set_ylabel('Time (seconds)')
+ax.legend()
+ax.grid(True, which='both', linestyle=':' )
+plt.tight_layout()
+plt.savefig('vector_chain_graph.png', dpi=150)
+plt.show()
+
+# Speedup and Efficiency Graph
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+fig.suptitle('Vector Addition: Speedup & Efficiency', fontsize=14)
+
+axes[0].plot(df['size'], df['speedup'], 'o-', label='Speedup', color='green')
+axes[0].axhline(y=1, color='gray', linestyle=':', label='Speedup = 1')
+axes[0].set_xscale('log')
+axes[0].set_title('Speedup vs Input Size')
+axes[0].set_xlabel('Input Size')
+axes[0].set_ylabel('Speedup')
+axes[0].legend()
+axes[0].grid(True, which='both', linestyle=':' )
+axes[1].plot(df['size'], df['efficiency'], 'D-', label='Efficiency', color='purple')
+axes[1].set_xscale('log')
+axes[1].set_title('Efficiency vs Input Size')
+axes[1].set_xlabel('Input Size')
+axes[1].set_ylabel('Efficiency')
+axes[1].legend()
+axes[1].grid(True, which='both', linestyle=':' )
+plt.tight_layout()
+plt.savefig('vector_speedup_efficiency.png', dpi=150)
+plt.show()

@@ -1,0 +1,131 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.utils import to_categorical
+
+# Load Dataset
+train_df = pd.read_csv("fashion-mnist_train.csv")
+test_df = pd.read_csv("fashion-mnist_test.csv")
+
+print("Train shape:", train_df.shape)
+print("Test shape:", test_df.shape)
+
+# Class names
+class_names = [
+    'T-shirt/top', 'Trouser', 'Pullover', 'Dress', 'Coat',
+    'Sandal', 'Shirt', 'Sneaker', 'Bag', 'Ankle boot'
+]
+
+# Separate Features and Labels
+X_train = train_df.drop("label", axis=1).values
+y_train = train_df["label"].values
+
+X_test = test_df.drop("label", axis=1).values
+y_test_original = test_df["label"].values
+
+# Normalize
+X_train = X_train / 255.0
+X_test = X_test / 255.0
+
+# Reshape for CNN
+X_train = X_train.reshape(-1, 28, 28, 1)
+X_test = X_test.reshape(-1, 28, 28, 1)
+
+# One Hot Encoding
+y_train = to_categorical(y_train, 10)
+y_test = to_categorical(y_test_original, 10)
+
+# Show sample images
+plt.figure(figsize=(10, 5))
+
+for i in range(10):
+    plt.subplot(2, 5, i + 1)
+    plt.imshow(X_train[i].reshape(28, 28), cmap='gray')
+    plt.title(class_names[np.argmax(y_train[i])])
+    plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+# Build CNN Model
+model = Sequential([
+    Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
+    MaxPooling2D((2, 2)),
+
+    Conv2D(64, (3, 3), activation='relu'),
+    MaxPooling2D((2, 2)),
+
+    Flatten(),
+
+    Dense(128, activation='relu'),
+    Dropout(0.5),
+
+    Dense(10, activation='softmax')
+])
+
+# Compile Model
+model.compile(
+    optimizer='adam',
+    loss='categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+model.summary()
+
+# Train Model
+history = model.fit(
+    X_train,
+    y_train,
+    epochs=10,
+    batch_size=64,
+    validation_data=(X_test, y_test)
+)
+
+# Evaluate Model
+loss, accuracy = model.evaluate(X_test, y_test)
+
+print("Test Loss:", loss)
+print("Test Accuracy:", accuracy)
+
+# Accuracy Graph
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+
+plt.title("Fashion MNIST Accuracy Graph")
+plt.xlabel("Epochs")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.show()
+
+# Loss Graph
+plt.plot(history.history['loss'], label='Training Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+
+plt.title("Fashion MNIST Loss Graph")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.legend()
+plt.show()
+
+# Predictions
+predictions = model.predict(X_test)
+predicted_classes = np.argmax(predictions, axis=1)
+
+# Display sample predictions
+plt.figure(figsize=(12, 6))
+
+for i in range(10):
+    plt.subplot(2, 5, i + 1)
+    plt.imshow(X_test[i].reshape(28, 28), cmap='gray')
+
+    actual = class_names[y_test_original[i]]
+    predicted = class_names[predicted_classes[i]]
+
+    plt.title(f"A: {actual}\nP: {predicted}", fontsize=8)
+    plt.axis('off')
+
+plt.tight_layout()
+plt.show()

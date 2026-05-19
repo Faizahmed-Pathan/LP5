@@ -1,0 +1,241 @@
+%%writefile bfs.cpp
+// Parallel BFS using OpenMP
+
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <queue>
+#include <cstdlib>
+#include <omp.h>
+
+using namespace std;
+
+// ================= GRAPH GENERATION =================
+
+void generateGraph(vector<vector<int>>& graph, int V, int edges) {
+
+    srand(42);
+
+    int count = 0;
+
+    while (count < edges) {
+
+        int u = rand() % V;
+        int v = rand() % V;
+
+        if (u != v) {
+
+            // Undirected graph
+            graph[u].push_back(v);
+            graph[v].push_back(u);
+
+            count++;
+        }
+    }
+}
+
+// ================= SEQUENTIAL BFS =================
+
+void sequentialBFS(vector<vector<int>>& graph, int start) {
+
+    int V = graph.size();
+
+    vector<int> visited(V, 0);
+
+    queue<int> q;
+
+    visited[start] = 1;
+
+    q.push(start);
+
+    while (!q.empty()) {
+
+        int node = q.front();
+
+        q.pop();
+
+        for (int neighbor : graph[node]) {
+
+            if (!visited[neighbor]) {
+
+                visited[neighbor] = 1;
+
+                q.push(neighbor);
+            }
+        }
+    }
+}
+
+// ================= PARALLEL BFS =================
+
+void parallelBFS(vector<vector<int>>& graph, int start) {
+
+    int V = graph.size();
+
+    vector<int> visited(V, 0);
+
+    vector<int> frontier;
+    vector<int> next_frontier;
+
+    visited[start] = 1;
+
+    frontier.push_back(start);
+
+    while (!frontier.empty()) {
+
+        next_frontier.clear();
+
+        #pragma omp parallel for
+        for (int i = 0; i < frontier.size(); i++) {
+
+            int node = frontier[i];
+
+            for (int neighbor : graph[node]) {
+
+                bool add = false;
+
+                // Critical section for visited update
+                #pragma omp critical
+                {
+                    if (!visited[neighbor]) {
+
+                        visited[neighbor] = 1;
+
+                        add = true;
+                    }
+                }
+
+                if (add) {
+
+                    // Critical section for frontier update
+                    #pragma omp critical
+                    {
+                        next_frontier.push_back(neighbor);
+                    }
+                }
+            }
+        }
+
+        frontier = next_frontier;
+    }
+}
+
+// ================= MAIN =================
+
+int main() {
+
+    // Set thread count
+    omp_set_num_threads(4);
+
+    int sizes[] = {500, 1000, 2000, 5000,10000};
+
+    int n = 5;
+
+    int threads = omp_get_max_threads();
+
+    cout << "\n===== OpenMP Parallel BFS =====\n";
+
+    cout << "Threads = " << threads << endl;
+
+    cout << "\nSize\tSeq_Time\t\tPar_Time\t\tSpeedup\t\tEfficiency\n";
+
+    ofstream csv("bfs_result.csv");
+
+    csv << "size,seq_bfs,par_bfs,speedup,efficiency\n";
+
+    for (int i = 0; i < n; i++) {
+
+        int V = sizes[i];
+
+        int edges = V * 3;
+
+        // Create graph
+        vector<vector<int>> graph(V);
+
+        generateGraph(graph, V, edges);
+
+        double start;
+
+        double seqTime;
+        double parTime;
+
+        // Sequential BFS timing
+        start = omp_get_wtime();
+
+        sequentialBFS(graph, 0);
+
+        seqTime = omp_get_wtime() - start;
+
+        // Parallel BFS timing
+        start = omp_get_wtime();
+
+        parallelBFS(graph, 0);
+
+        parTime = omp_get_wtime() - start;
+
+        // Performance metrics
+        double speedup = seqTime / parTime;
+
+        double efficiency = speedup / threads;
+
+        // Console output
+        cout << V
+             << "\t" << seqTime
+             << "\t\t" << parTime
+             << "\t\t" << speedup
+             << "\t\t" << efficiency
+             << endl;
+
+        // CSV output
+        csv << V << ","
+            << seqTime << ","
+            << parTime << ","
+            << speedup << ","
+            << efficiency << "\n";
+    }
+
+    csv.close();
+
+    cout << "\nResults saved to bfs_result.csv\n";
+
+    return 0;
+}
+
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("bfs_result.csv")
+print(df)
+
+plt.figure(figsize=(8, 5))
+plt.plot(df['size'], df['seq_bfs'], 'o-', label='Sequential BFS')
+plt.plot(df['size'], df['par_bfs'], 's--', label='Parallel BFS')
+plt.title("BFS: Sequential vs Parallel Time")
+plt.xlabel("Input Size")
+plt.ylabel("Time in Seconds")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+plt.figure(figsize=(8, 5))
+plt.plot(df['size'], df['speedup'], 'o-', label='Speedup')
+plt.axhline(y=1, linestyle='--', label='Speedup = 1')
+plt.title("BFS Speedup")
+plt.xlabel("Input Size")
+plt.ylabel("Speedup")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+plt.figure(figsize=(8, 5))
+
+plt.plot(df['size'], df['efficiency'], 'o-', label='Efficiency')
+
+plt.title("BFS Efficiency")
+plt.xlabel("Input Size")
+plt.ylabel("Efficiency")
+plt.legend()
+plt.grid(True)
+plt.show()
