@@ -377,3 +377,55 @@ int main() {
 
     return 0;
 }
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.read_csv("merge_sort.csv")
+
+print(df)
+
+# Time Comparison
+plt.figure(figsize=(8,5))
+
+plt.plot(df["size"],
+         df["seq_merge"],
+         marker='o',
+         label="Sequential")
+
+plt.plot(df["size"],
+         df["par_merge"],
+         marker='s',
+         label="Parallel")
+
+plt.title("Merge Sort Execution Time")
+
+plt.xlabel("Input Size")
+
+plt.ylabel("Time (seconds)")
+
+plt.legend()
+
+plt.grid(True)
+
+plt.show()
+
+# Speedup Graph
+plt.figure(figsize=(8,5))
+
+plt.plot(df["size"],
+         df["speedup"],
+         marker='o')
+
+plt.axhline(y=1,
+            linestyle='--')
+
+plt.title("Merge Sort Speedup")
+
+plt.xlabel("Input Size")
+
+plt.ylabel("Speedup")
+
+plt.grid(True)
+plt.tight_layout()
+plt.show()
