@@ -1,0 +1,365 @@
+/* vector adition */
+#include <stdio.h>
+#include <cuda_runtime.h>
+#include <time.h>
+
+#define N 5
+
+__global__ void add(int *A,int *B,int *C)
+{
+    int i = threadIdx.x;
+    C[i] = A[i] + B[i];
+}
+
+int main()
+{
+    int A[N]={5,3,2,1,9};
+    int B[N]={5,4,3,2,1};
+    int C[N], D[N];
+
+    // CPU Sequential
+    clock_t s = clock();
+
+    for(int i=0;i<N;i++)
+        C[i]=A[i]+B[i];
+
+    clock_t e = clock();
+
+    // GPU Parallel
+    int *d_A,*d_B,*d_C;
+
+    cudaMalloc(&d_A,N*sizeof(int));
+    cudaMalloc(&d_B,N*sizeof(int));
+    cudaMalloc(&d_C,N*sizeof(int));
+
+    cudaMemcpy(d_A,A,N*sizeof(int),
+               cudaMemcpyHostToDevice);
+
+    cudaMemcpy(d_B,B,N*sizeof(int),
+               cudaMemcpyHostToDevice);
+
+    clock_t gs = clock();
+
+    add<<<1,N>>>(d_A,d_B,d_C);
+
+    cudaMemcpy(D,d_C,N*sizeof(int),
+               cudaMemcpyDeviceToHost);
+
+    clock_t ge = clock();
+
+    // Output
+    printf("CPU Time=%f\n",
+    (double)(e-s)/CLOCKS_PER_SEC);
+
+    printf("GPU Time=%f\n",
+    (double)(ge-gs)/CLOCKS_PER_SEC);
+
+    for(int i=0;i<N;i++)
+        printf("%d ",D[i]);
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    return 0;
+}
+
+/*  reduction  */
+
+#include <stdio.h>
+#include <cuda_runtime.h>
+#include <time.h>
+
+#define N 5
+
+__global__ void operations(int *A,int *sum,
+                           int *min,int *max)
+{
+    int i = threadIdx.x;
+
+    atomicAdd(sum,A[i]);
+
+    atomicMin(min,A[i]);
+
+    atomicMax(max,A[i]);
+}
+
+int main()
+{
+    int A[N] = {1,2,3,4,5};
+
+    // CPU
+    clock_t s = clock();
+
+    int sumCPU = 0;
+    int minCPU = A[0];
+    int maxCPU = A[0];
+
+    for(int i=0;i<N;i++)
+    {
+        sumCPU += A[i];
+
+        if(A[i] < minCPU)
+            minCPU = A[i];
+
+        if(A[i] > maxCPU)
+            maxCPU = A[i];
+    }
+
+    float avgCPU = (float)sumCPU/N;
+
+    clock_t e = clock();
+
+    // GPU
+    int *d_A,*d_sum,*d_min,*d_max;
+
+    int sumGPU = 0;
+    int minGPU = A[0];
+    int maxGPU = A[0];
+
+    cudaMalloc(&d_A,N*sizeof(int));
+    cudaMalloc(&d_sum,sizeof(int));
+    cudaMalloc(&d_min,sizeof(int));
+    cudaMalloc(&d_max,sizeof(int));
+
+    cudaMemcpy(d_A,A,N*sizeof(int),
+               cudaMemcpyHostToDevice);
+
+    cudaMemcpy(d_sum,&sumGPU,sizeof(int),
+               cudaMemcpyHostToDevice);
+
+    cudaMemcpy(d_min,&minGPU,sizeof(int),
+               cudaMemcpyHostToDevice);
+
+    cudaMemcpy(d_max,&maxGPU,sizeof(int),
+               cudaMemcpyHostToDevice);
+
+    clock_t gs = clock();
+
+    operations<<<1,N>>>
+    (d_A,d_sum,d_min,d_max);
+
+    cudaMemcpy(&sumGPU,d_sum,sizeof(int),
+               cudaMemcpyDeviceToHost);
+
+    cudaMemcpy(&minGPU,d_min,sizeof(int),
+               cudaMemcpyDeviceToHost);
+
+    cudaMemcpy(&maxGPU,d_max,sizeof(int),
+               cudaMemcpyDeviceToHost);
+
+    float avgGPU = (float)sumGPU/N;
+
+    clock_t ge = clock();
+
+    // Output
+    printf("CPU Sum = %d\n",sumCPU);
+    printf("GPU Sum = %d\n",sumGPU);
+
+    printf("CPU Min = %d\n",minCPU);
+    printf("GPU Min = %d\n",minGPU);
+
+    printf("CPU Max = %d\n",maxCPU);
+    printf("GPU Max = %d\n",maxGPU);
+
+    printf("CPU Avg = %.2f\n",avgCPU);
+    printf("GPU Avg = %.2f\n",avgGPU);
+
+    printf("CPU Time = %f\n",
+    (double)(e-s)/CLOCKS_PER_SEC);
+
+    printf("GPU Time = %f\n",
+    (double)(ge-gs)/CLOCKS_PER_SEC);
+
+    cudaFree(d_A);
+    cudaFree(d_sum);
+    cudaFree(d_min);
+    cudaFree(d_max);
+
+    return 0;
+}
+
+/* bubble*/
+
+#include <iostream>
+#include <omp.h>
+using namespace std;
+
+#define N 5
+
+// Sequential Bubble Sort
+void sequential(int a[])
+{
+    for(int i=0;i<N-1;i++)
+    {
+        for(int j=0;j<N-i-1;j++)
+        {
+            if(a[j] > a[j+1])
+            {
+                int t = a[j];
+                a[j] = a[j+1];
+                a[j+1] = t;
+            }
+        }
+    }
+}
+
+// Parallel Bubble Sort
+void parallel(int a[])
+{
+    for(int i=0;i<N;i++)
+    {
+        #pragma omp parallel for
+        for(int j=0;j<N-1;j++)
+        {
+            if(a[j] > a[j+1])
+            {
+                int t = a[j];
+                a[j] = a[j+1];
+                a[j+1] = t;
+            }
+        }
+    }
+}
+
+int main()
+{
+    int A[N] = {5,4,3,2,1};
+    int B[N] = {5,4,3,2,1};
+
+    // Sequential Time
+    double s = omp_get_wtime();
+
+    sequential(A);
+
+    double e = omp_get_wtime();
+
+    // Parallel Time
+    double ps = omp_get_wtime();
+
+    parallel(B);
+
+    double pe = omp_get_wtime();
+
+    // Output
+    cout<<"Sequential Sort: ";
+
+    for(int i=0;i<N;i++)
+        cout<<A[i]<<" ";
+
+    cout<<"\nParallel Sort: ";
+
+    for(int i=0;i<N;i++)
+        cout<<B[i]<<" ";
+
+    cout<<"\n\nSequential Time = "
+        <<e-s;
+
+    cout<<"\nParallel Time = "
+        <<pe-ps;
+
+    return 0;
+}
+/* bfs  */
+#include <iostream>
+#include <queue>
+#include <omp.h>
+using namespace std;
+
+#define V 5
+
+int graph[V][V] = {
+    {0,1,1,0,0},
+    {1,0,0,1,1},
+    {1,0,0,0,0},
+    {0,1,0,0,0},
+    {0,1,0,0,0}
+};
+
+// Sequential BFS
+void sequentialBFS(int start)
+{
+    bool visited[V] = {0};
+
+    queue<int> q;
+
+    visited[start] = true;
+    q.push(start);
+
+    while(!q.empty())
+    {
+        int node = q.front();
+        q.pop();
+
+        cout<<node<<" ";
+
+        for(int i=0;i<V;i++)
+        {
+            if(graph[node][i] &&
+               !visited[i])
+            {
+                visited[i] = true;
+                q.push(i);
+            }
+        }
+    }
+}
+
+// Parallel BFS
+void parallelBFS(int start)
+{
+    bool visited[V] = {0};
+
+    queue<int> q;
+
+    visited[start] = true;
+    q.push(start);
+
+    while(!q.empty())
+    {
+        int node = q.front();
+        q.pop();
+
+        cout<<node<<" ";
+
+        #pragma omp parallel for
+        for(int i=0;i<V;i++)
+        {
+            if(graph[node][i] &&
+               !visited[i])
+            {
+                visited[i] = true;
+
+                #pragma omp critical
+                q.push(i);
+            }
+        }
+    }
+}
+
+int main()
+{
+    // Sequential Time
+    double s = omp_get_wtime();
+
+    cout<<"Sequential BFS: ";
+    sequentialBFS(0);
+
+    double e = omp_get_wtime();
+
+    // Parallel Time
+    double ps = omp_get_wtime();
+
+    cout<<"\nParallel BFS: ";
+    parallelBFS(0);
+
+    double pe = omp_get_wtime();
+
+    cout<<"\n\nSequential Time = "
+        <<e-s;
+
+    cout<<"\nParallel Time = "
+        <<pe-ps;
+
+    return 0;
+}
